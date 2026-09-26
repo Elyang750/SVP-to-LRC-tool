@@ -81,7 +81,12 @@ export function renderSvpInfo(info) {
         svpInfoContent.innerHTML = `<div class="info-item" style="color: #f44336;">${info.error}</div>`;
         return;
     }
-
+    const trackLine = info.trackSummary
+        ? `<div class="info-item">
+              <span class="info-label">音轨/音符组：</span>
+              <span class="info-value">${info.trackSummary}</span>
+           </div>`
+        : '';
     svpInfoContent.innerHTML = `
         <div class="info-item">
             <span class="info-label">BPM信息：</span>
@@ -108,4 +113,107 @@ export function renderSvpInfo(info) {
             <span class="info-value">${info.sampleRate}</span>
         </div>
     `;
+}
+// ---------- 渲染轨道选择器（多轨/多音符组时） ----------
+export function renderTrackSelector(trackList, selectedIndices, onSelectCallback) {
+    const container = document.getElementById('trackSelectorContainer');
+    if (!container) return;
+
+    // 无内容 → 隐藏
+    if (!trackList || trackList.length <= 1) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div class="svp-info">
+            <h3>选择要生成 LRC 的音符组（可多选）</h3>
+            <div class="hint" style="color:#95a5a6;font-size:12px;margin-bottom:8px;">
+                多选时按时间合并。一般只选一个主旋律即可。
+            </div>
+            <div class="track-list" id="trackListInner"></div>
+        </div>
+    `;
+    const inner = document.getElementById('trackListInner');
+    trackList.forEach((t, i) => {
+        const div = document.createElement('div');
+        div.className = 'track-item';
+        div.dataset.index = String(i);
+        if (selectedIndices.has(i)) div.classList.add('selected');
+        div.innerHTML = `
+            <div class="track-left">
+                <div class="track-checkbox"></div>
+                <div>
+                    <div class="track-name">${escapeHtml(t.name)}</div>
+                    <div class="track-path">${escapeHtml(t.path)}</div>
+                </div>
+            </div>
+            <span class="track-count">${t.noteCount} 个音符</span>
+        `;
+        div.addEventListener('click', () => {
+            const idx = parseInt(div.dataset.index, 10);
+            if (selectedIndices.has(idx)) selectedIndices.delete(idx);
+            else selectedIndices.add(idx);
+            div.classList.toggle('selected');
+            if (typeof onSelectCallback === 'function') {
+                onSelectCallback(Array.from(selectedIndices));
+            }
+        });
+        inner.appendChild(div);
+    });
+}
+
+// ---------- 渲染匹配报告 ----------
+export function renderMatchReport(details) {
+    const container = document.getElementById('matchReportContainer');
+    if (!container) return;
+
+    if (!details || details.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    const high = details.filter(d => d.similarity >= THRESHOLD_HIGH).length;
+    const mid = details.filter(d => d.similarity >= THRESHOLD_MID && d.similarity < THRESHOLD_HIGH).length;
+    const low = details.filter(d => d.similarity < THRESHOLD_MID).length;
+
+    const summaryHtml =
+        `<div class="report-summary">共 ${details.length} 行 · ` +
+        `<span class="tag high">高 ≥${(THRESHOLD_HIGH*100).toFixed(0)}%：${high}</span>` +
+        `<span class="tag mid">中 ${(THRESHOLD_MID*100).toFixed(0)}–${(THRESHOLD_HIGH*100).toFixed(0)}%：${mid}</span>` +
+        `<span class="tag low">低 &lt;${(THRESHOLD_MID*100).toFixed(0)}%：${low}</span></div>`;
+
+    const rowsHtml = details.map(d => {
+        const cls = d.similarity >= THRESHOLD_HIGH ? 'high'
+                  : d.similarity >= THRESHOLD_MID ? 'mid' : 'low';
+        return `<div class="report-row ${cls}">
+            <div class="report-line1">
+                <span class="report-time">${escapeHtml(d.time)}</span>
+                <span class="report-text">${escapeHtml(d.text)}</span>
+                <span class="report-sim">${(d.similarity * 100).toFixed(0)}%</span>
+            </div>
+            <div class="report-compare">
+                <div>歌词&nbsp;${escapeHtml(d.userNormalized)}</div>
+                <div>SVP&nbsp;&nbsp;${escapeHtml(d.svpNormalized)}</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div class="svp-info">
+            <h3>匹配报告（仅用于预览，不写入 LRC 文件）</h3>
+            ${summaryHtml}
+            <div class="report-list">${rowsHtml}</div>
+        </div>
+    `;
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[c]);
 }
